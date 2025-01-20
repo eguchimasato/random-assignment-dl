@@ -29,13 +29,16 @@ P_i(\succ)\;sd(\succ_i)\;P_i(\succ|^i\succ_i^*)\;\text{for all}\;i\in N,\;\succ_
 ```math
 \succ_i=\succ_j\;\Rightarrow P_i=P_j
 ```
-
-
-
-
+*Relationship with anonymity
 
 #### Stochastic Dominance
 ```math
 \forall\;P_i,\;Q_i\in\mathscr{L}(A)\;:\;P_i\;sd(\succ_i)\;Q_i\overset{\mathrm{def}}{\iff}\left\{\sum_{k=1}^{t}p_{ia_k}\geq\sum_{k=1}^{t}q_{ia_k},\;\text{for}\;t=1,\dots,n\right\}
 ```
 
+### Ex-post Efficiency
+1. Decompose a biostochastic matrix using Birkhoff algorithm. 
+2. Calculate the efficiency violation of each permutatioin matrix. 
+3. Calculate the weighted average of the violation. 
+
+cf. [Birkhoff Algorithm](https://en.wikipedia.org/wiki/Birkhoff_algorithm)
