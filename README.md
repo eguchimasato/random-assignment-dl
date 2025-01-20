@@ -10,7 +10,7 @@
  });
 </script>
 
-## 不可能性定理 (Bogomolnaia and Moulin 2001, Theorem 2)
+## Impossibility Theorem (Bogomolnaia and Moulin 2001, Theorem 2)
 Assume $n\geq 4$. Then there exists no mechanism meeting the three following requirements; ordinal efficiency, strategyproofness, and equal treatment of equals. 
 
 ### Ordinal Efficiency
