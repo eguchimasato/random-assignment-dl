@@ -12,8 +12,7 @@ def compute_spv(cfg, e_model, r, p, q):
         cfg: Config
         model to evaluate
         r: matching matrix [Batch_size * num_goods, * num_goods]
-        p: men's preference [Batch_size, num_goods, num_goods]
-        q: women's preference [Batch_size, num_goods, num_goods]
+        p: Agent's preference [Batch_size, num_goods, num_goods]
     returns:
         sp_v: torch.Tensor of shape [num_goods, num_goods]
     """
@@ -23,9 +22,9 @@ def compute_spv(cfg, e_model, r, p, q):
 
     spv = torch.zeros((num_goods, num_goods), device=device)
     for agent_idx in range(num_goods):
-        P_mis, Q_mis = G.compose_misreport(p, q, G.mis_array, agent_idx, is_P=True)
-        p_mis, q_mis = torch.Tensor(P_mis).to(device), torch.Tensor(Q_mis).to(device)
-        r_mis = e_model(p_mis.view(-1, num_goods, num_goods), q_mis.view(-1, num_goods, num_goods))
+        P_mis = G.compose_misreport(p, G.mis_array, agent_idx)
+        p_mis = torch.Tensor(P_mis).to(device)
+        r_mis = e_model(p_mis.view(-1, num_goods, num_goods))
         r_mis = r_mis.view(p.shape[0], -1, num_goods, num_goods)
 
         r_mis_agent = r_mis[:, :, agent_idx, :]
