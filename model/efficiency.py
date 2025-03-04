@@ -1,13 +1,15 @@
+import torch
+
 class compute_ev:
-    def __init__(self, P, preferences):
+    def __init__(self, cfg, P, preferences):
         """
-        P: n×n の二重確率行列 (torch.Tensor)
-        preferences: n×n の選好行列 (torch.Tensor)
+        P: n*n の二重確率行列 (torch.Tensor)
+        preferences: n*n の選好行列 (torch.Tensor)
                      各行 i はエージェント i の選好を表し、値が大きいほど好む
         """
         self.P = P.clone()
         self.preferences = preferences
-        self.n = P.shape[0]
+        self.n = cfg.num_goods
 
     def build_graph(self, Q):
         """

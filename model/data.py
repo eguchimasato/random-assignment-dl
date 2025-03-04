@@ -15,10 +15,9 @@ class Data(object):
         self.cfg = cfg
         self.num_goods = cfg.num_goods
         self.corr = cfg.corr
-        self.prob = cfg.prob
         self.device = cfg.device
 
-    def sample_ranking(self, N, prob):
+    def sample_ranking(self, N):
         """ 
         Samples ranked lists
         Arguments
@@ -28,7 +27,7 @@ class Data(object):
             Ranked List of shape [N, Num_agents]
         """
                               
-        N_trunc = int(N * prob)
+        N_trunc = int(N)
         P = generate_permutation_array(N, self.num_goods) + 1
                
         if N_trunc > 0:
@@ -64,7 +63,7 @@ class Data(object):
             
         return M/self.num_goods
     
-    def generate_batch(self, batch_size, prob = None, corr = None):
+    def generate_batch(self, batch_size, corr = None):
         """
         Samples a batch of data from training
         Arguments
@@ -76,16 +75,15 @@ class Data(object):
         """
 
         if corr is None: corr = self.corr
-        if prob is None: prob = self.prob
         
         N = batch_size * self.num_goods
         
-        P = self.sample_ranking(N, prob)
+        P = self.sample_ranking(N)
         
         P = P.reshape(-1, self.num_goods, self.num_goods)                           
                 
         if corr > 0.00:
-            P_common = self.sample_ranking(batch_size, prob).reshape(batch_size, 1, self.num_goods)
+            P_common = self.sample_ranking(batch_size).reshape(batch_size, 1, self.num_goods)
             
             P_idx = np.random.binomial(1, corr, [batch_size, self.num_goods, 1])
             
