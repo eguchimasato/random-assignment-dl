@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 class compute_etev:
     def __init__(self, cfg, P, preferences):
@@ -8,7 +9,10 @@ class compute_etev:
                      各行 i はエージェント i の選好を表し、値が大きいほど好む
         """
         self.P = P.clone()
-        self.preferences = preferences
+        
+        if isinstance(preferences, np.ndarray):
+            preferences = torch.tensor(preferences, dtype=torch.float32)
+        self.preferences = preferences.clone().detach().float()
         self.n = cfg.num_goods
 
     def violation_degree(self, cfg, P, preferences):
@@ -17,7 +21,9 @@ class compute_etev:
         preferences: (n x n) の選好行列。各行はエージェントの各財に対する評価を表し、
                      数値が大きいほど好ましいと解釈される。
         """
-        preferences = torch.tensor(preferences, dtype=torch.float32)
+        if isinstance(preferences, np.ndarray):
+            preferences = torch.tensor(preferences, dtype=torch.float32)
+        preferences = preferences.clone().detach().float()
         n = self.n
         violation = 0.0  # Pythonのfloatとして初期化
 
