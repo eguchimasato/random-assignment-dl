@@ -60,6 +60,7 @@ def train_model(cfg, model, data):
     # 損失関数の重み付け
     lambda_spv = 1.0  # c_1 の重み初期値
     lambda_etev = 1.0  # c_2 の重み初期値
+    lambda_c = 1.0  # c の重み初期値
 
     rho = 1  # 重み付けのパラメータ
     
@@ -80,7 +81,7 @@ def train_model(cfg, model, data):
         objective_loss = ev_computer.execute_all_cycles_batch().sum()  # 目的関数
 
         # 総合損失
-        total_loss = lambda_spv * spv + lambda_etev * etev + objective_loss
+        total_loss = objective_loss + lambda_spv * spv + lambda_etev * etev + lambda_c * (spv + etev)
         
         # 逆伝播とパラメータ更新
         optimizer.zero_grad()
@@ -91,14 +92,15 @@ def train_model(cfg, model, data):
         # パラメータの更新
         lambda_spv += rho * spv.sum().item()
         lambda_etev += rho * etev.sum().item()
+        lambda_c += rho * (spv.sum().item() + etev.sum().item())
         
-        if (epoch + 1) % 100 == 0:
+        if (epoch + 1) % 100 == 0: 
             print(f"Epoch: {epoch+1}")
             print(f"Total Loss: {total_loss.item()}")
             print(f"SPV: {spv.sum().item()}")
             print(f"ETEV: {etev.sum().item()}")
             print(f"Objective Loss(ev): {objective_loss.sum().item()}")
-            print(f"Paramiters: lambda_spv = {lambda_spv}, lambda_sv = {lambda_etev}, rho = {rho}")
+            print(f"Parameters: lambda_spv = {lambda_spv}, lambda_sv = {lambda_etev},lambda_c = {lambda_c}, rho = {rho}")
             print("---------------------------")
 
     print("Training completed.")
