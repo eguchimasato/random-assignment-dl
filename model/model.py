@@ -73,8 +73,10 @@ def train_model(cfg, model, data):
         
         # 損失の計算
         spv = compute_spv(cfg, model, r, P)  # 制約条件1の損失
-        etev = compute_etev(cfg, r, P)  # 制約条件2の損失
-        objective_loss = compute_ev(cfg, r, P)  # 目的関数
+        etev_computer = compute_etev(cfg, r, P)
+        etev = etev_computer.compute_violation_degrees()  # 制約条件2の損失
+        ev_computer = compute_ev(cfg, r, P)
+        objective_loss = ev_computer.execute_all_cycles_batch()  # 目的関数
 
         # 総合損失
         loss_matrix = lambda_spv * spv + lambda_etev * etev + objective_loss

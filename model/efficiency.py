@@ -26,7 +26,7 @@ class compute_ev:
                     continue
                 for i in range(self.n):
                     if self.preferences[i, a] > self.preferences[i, b] and Q[i, b] > 0:
-                        graph[a].append((b, i, Q[i, b].item()))
+                        graph[a].append((b, i, Q[i, b].item())) 
                         # 同じ (a, b) ペアについて、最初に条件を満たしたエージェントを witness とする
                         break
         return graph
@@ -81,7 +81,7 @@ class compute_ev:
         """
         Q = self.P.clone()
         cycles_exchanges = []
-        ev = 0.0
+        violation = 0.0
         while True:
             graph = self.build_graph(Q)
             cycle = self.find_cycle(graph)
@@ -90,10 +90,26 @@ class compute_ev:
             # サイクル内の各エッジの利用可能な確率の最小値を epsilon とする
             epsilons = [edge[3] for edge in cycle]
             epsilon = min(epsilons)
-            ev += epsilon
+            violation += epsilon
             # サイクル内の各エッジについて交換を実施
             for (a, b, agent, avail) in cycle:
                 Q[agent, b] -= epsilon
                 Q[agent, a] += epsilon
             cycles_exchanges.append((cycle, epsilon))
-        return ev
+        return violation
+    
+    def execute_all_cycles_batch(self):
+        """
+        P と preferences の各バッチに対して execute_all_cycles を計算し、
+        それらの結果を合わせて n*1 の行列にする。
+        """
+        batch_size = self.P.shape[0]
+        results = torch.zeros((batch_size, 1), dtype=torch.float32)
+
+        for b in range(batch_size):
+            P_batch = self.P[b].view(self.n, self.n)
+            preferences_batch = self.preferences[b].view(self.n, self.n)
+            ev_instance = compute_ev(self, P_batch, preferences_batch)
+            results[b, 0] = ev_instance.execute_all_cycles()
+
+        return results
