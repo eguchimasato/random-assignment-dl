@@ -5,7 +5,7 @@ class HParams:
             self, 
             num_goods = 4, 
             num_hidden_nodes = 32,
-            batch_size = 32, 
+            batch_size = 128, 
             epochs = 10000, 
             corr = 0.0, 
             device = 'mps', 

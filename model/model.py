@@ -18,7 +18,7 @@ class NeuralNet(nn.Module):
         num_hidden_nodes = self.cfg.num_hidden_nodes
 
         self.layers = nn.Sequential(
-            nn.Linear(num_goods * num_goods * 2, num_hidden_nodes),
+            nn.Linear(num_goods * num_goods, num_hidden_nodes),
             nn.LeakyReLU(),
             nn.Linear(num_hidden_nodes, num_hidden_nodes),
             nn.LeakyReLU(),
@@ -39,7 +39,7 @@ class NeuralNet(nn.Module):
         if isinstance(p, np.ndarray):
             p = torch.tensor(p, device=self.cfg.device, dtype=torch.float32)
 
-        x = p.view(-1, self.cfg.num_goods ** 2 * 2)
+        x = p.view(-1, self.cfg.num_goods ** 2)
         r = self.layers(x)
         r = r.view(-1, self.cfg.num_goods, self.cfg.num_goods)
         r = F.softplus(r)

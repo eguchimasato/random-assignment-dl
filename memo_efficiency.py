@@ -1,38 +1,36 @@
 import torch
 import numpy as np
-import multiprocessing as mp
 
 class compute_ev:
     def __init__(self, cfg, P, preferences):
         """
-        P: batch_size x n x n の二重確率行列 (torch.Tensor)
-        preferences: n x n の選好行列 (torch.Tensor)
+        P: n*n の二重確率行列 (torch.Tensor)
+        preferences: n*n の選好行列 (torch.Tensor)
                      各行 i はエージェント i の選好を表し、値が大きいほど好む
         """
         self.cfg = cfg
-        self.P = P.clone().detach().cpu()
+        self.P = P.clone()
         if isinstance(preferences, np.ndarray):
             preferences = torch.tensor(preferences, dtype=torch.float32)
         self.preferences = preferences.clone().detach().float()
         self.n = cfg.num_goods
 
-    def build_graph(self, Q, preferences):
+    def build_graph(self, Q):
         """
-        Q: 現在の n x n 二重確率行列 (torch.Tensor)
+        Q: 現在の二重確率行列 (torch.Tensor)
         オブジェクトを頂点とするグラフを構築する。
         エッジ (a -> b) は、あるエージェント i が a を b より好む（preferences[i, a] > preferences[i, b]）
         かつ Q[i, b] > 0 である場合に追加する。
         エッジには (b, i, Q[i, b]) の情報を記録する。
         """
-
         graph = {a: [] for a in range(self.n)}
         for a in range(self.n):
             for b in range(self.n):
                 if a == b:
                     continue
                 for i in range(self.n):
-                    if preferences[i, a].item() > preferences[i, b].item() and Q[i, b].item() > 0:
-                        graph[a].append((b, i, Q[i, b].item()))
+                    if self.preferences[i, a] > self.preferences[i, b] and Q[i, b] > 0:
+                        graph[a].append((b, i, Q[i, b].item())) 
                         # 同じ (a, b) ペアについて、最初に条件を満たしたエージェントを witness とする
                         break
         return graph
@@ -77,18 +75,19 @@ class compute_ev:
                     return cycle
         return None
 
-    def execute_all_cycles(self, idx):
+    def execute_all_cycles(self):
         """
-        idx: バッチ内のインデックス
-        対応する n x n 行列に対してサイクル交換を実施し、違反量 (violation) を計算する。
+        現在の二重確率行列 self.P に対して、グラフを構築し、サイクルを探索しては
+        そのサイクル内で交換可能な最小の確率 epsilon だけ交換を実施する。
+        複数のサイクルが存在する場合、すべてのサイクルで交換が行われるまで反復する。
+        交換が行われたサイクルと各サイクルでの epsilon を記録し、最終的な更新後行列 Q と
+        サイクル情報のリストを返す。
         """
-        # 抽出: バッチ内の idx 番目の n x n 行列
-        Q = self.P[idx].clone()
-        preferences = self.preferences[idx].clone()
+        Q = self.P.clone()
         cycles_exchanges = []
         violation = 0.0
         while True:
-            graph = self.build_graph(Q, preferences)
+            graph = self.build_graph(Q)
             cycle = self.find_cycle(graph)
             if cycle is None:
                 break
@@ -105,13 +104,16 @@ class compute_ev:
 
     def execute_all_cycles_batch(self):
         """
-        バッチ内の各 n x n 行列に対して execute_all_cycles を計算し、違反量 (violation) をまとめる。
-        結果はバッチサイズ x 1 のテンソルとなる。
+        P と preferences の各バッチに対して execute_all_cycles を計算し、
+        それらの結果を合わせて n*1 の行列にする。
         """
         batch_size = self.P.shape[0]
-        with mp.Pool(mp.cpu_count()) as pool:
-            # 各プロセスに対してバッチ内の異なる idx を渡して並列実行
-            violations = pool.map(self.execute_all_cycles, range(batch_size))
-        # 結果を torch.Tensor に変換し、形状を (batch_size, 1) にする
-        violations = torch.tensor(violations, dtype=torch.float32).unsqueeze(1)
-        return violations
+        results = torch.zeros((batch_size, 1), dtype=torch.float32)
+
+        for b in range(batch_size):
+            P_batch = self.P[b].view(self.n, self.n)
+            preferences_batch = self.preferences[b].view(self.n, self.n)
+            ev_instance = compute_ev(self.cfg, P_batch, preferences_batch)
+            results[b, 0] = ev_instance.execute_all_cycles()
+
+        return results
