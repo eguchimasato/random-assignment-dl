@@ -23,11 +23,13 @@ class Graph:
             for b in range(self.num_objects):
                 if a == b:
                     continue
-                
-                for i in range(self.num_agents):
-                    if (self.preferences[i, a] > self.preferences[i, b]) and (self.Q[i, b] > 0):
-                        graph[a].append((b, i, self.Q[i, b]))
-                        break # 同じ (a, b) ペアについて、最初に条件を満たしたエージェントを witness とする
+                else: 
+                    for i in range(self.num_agents):
+                        if (self.preferences[i, a] > self.preferences[i, b]) and (self.Q[i, b] > 0):
+                            graph[a].append((b, i, self.Q[i, b].item()))
+                            break # 同じ (a, b) ペアについて、最初に条件を満たしたエージェントを witness とする
+                        else: 
+                            continue
         
         return graph
 
@@ -59,7 +61,7 @@ class Graph:
                         return cycle_edges
                 
                 if nbr not in visited:
-                    rec_stack.append((v, (v, nbr, agent, avail)))
+                    rec_stack.append((v, (v, nbr, agent, avail)))  
                     result = dfs(nbr)
                     if result is not None:
                         return result
@@ -107,13 +109,17 @@ class Graph:
 
 
 class compute_ev:
-    def __init__(self, P, preferences, num_processes=None):
+    def __init__(self, cfg, P, preferences, num_processes=None):
         """
         P: batch_size x n x n の二重確率行列 (torch.Tensor)
         preferences: batch_size x n x n の選好行列 (torch.Tensor)
                      各行 i はエージェント i の選好を表し、値が大きいほど好む
         """
-        self.P = P
+        self.cfg = cfg
+        self.P = P.clone().detach().cpu()
+        if isinstance(preferences, np.ndarray):
+            preferences = torch.tensor(preferences, dtype=torch.float32)
+        self.preferences = preferences.clone().detach().float()
         self.preferences = preferences
         self.batch_size = P.shape[0]
         self.num_agents = P.shape[1]
@@ -157,4 +163,4 @@ class compute_ev:
         # 結果を torch.Tensor に変換し、形状を (batch_size, 1) にする
         violations = torch.tensor(violations, dtype=torch.float32).unsqueeze(1)
 
-        return violations, self.num_processes
+        return violations
