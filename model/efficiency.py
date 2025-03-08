@@ -13,40 +13,24 @@ class Graph:
     
     def build_graph(self):
         """
-        オブジェクトを頂点とするグラフを構築する処理を、全エージェント分の 3 次元配列を作成せずに
-        各エージェントごとに 2 次元の条件行列を作成することで高速化する。
-        エッジ (a -> b) は、エージェント i について
-          - preferences[i, a] > preferences[i, b]
-          - Q[i, b] > 0
-        の条件を満たす場合に追加し、最初に条件を満たしたエージェント i を witness とする。
+        Q: 現在の n x n 二重確率行列 (torch.Tensor)
+        オブジェクトを頂点とするグラフを構築する。
+        エッジ (a -> b) は、あるエージェント i が a を b より好む（preferences[i, a] > preferences[i, b]）
+        かつ Q[i, b] > 0 である場合に追加する。
+        エッジには (b, i, Q[i, b]) の情報を記録する。
         """
-        P = self.preferences  # shape: (num_agents, num_objects)
-        Q = self.Q            # shape: (num_agents, num_objects)
-        num_agents, num_objects = P.shape
-
-        # 結果のグラフ: 各頂点 a に対して、(b, witness_agent, Q 値) のリスト
-        graph = {a: [] for a in range(num_objects)}
-        # 各 (a, b) ペアについて、すでにエッジが追加されたかを記録（最初の witness だけを採用）
-        used = np.zeros((num_objects, num_objects), dtype=bool)
+        threshold = 1e-5
+        graph = {a: [] for a in range(self.num_objects)}
+        for a in range(self.num_objects):
+            for b in range(self.num_objects):
+                if a == b:
+                    continue
+                
+                for i in range(self.num_agents):
+                    if (self.preferences[i, a] > self.preferences[i, b]) and (self.Q[i, b] > threshold):
+                        graph[a].append((b, i, self.Q[i, b]))
+                        break # 同じ (a, b) ペアについて、最初に条件を満たしたエージェントを witness とする
         
-        # エージェント i ごとに条件行列を計算し、条件を満たす (a, b) ペアを抽出
-        for i in range(num_agents):
-            # 各エージェントについて、a, b の比較結果を 2 次元配列として計算
-            # ※ Q[i, b] > 0 は、各行に対して b 軸でブロードキャストされる
-            cond_i = (P[i][:, None] > P[i][None, :]) & (Q[i][None, :] > 0)
-            # すでに他のエージェントでエッジが追加されていない (a, b) ペアのみ対象
-            valid = cond_i & (~used)
-            # 有効な (a, b) ペアのインデックスを一括取得
-            a_indices, b_indices = np.where(valid)
-            # a == b（自己ループ）は除外
-            mask = a_indices != b_indices
-            a_indices = a_indices[mask]
-            b_indices = b_indices[mask]
-            
-            # 取得した全 (a, b) ペアに対して、エージェント i を witness としてエッジを追加
-            for a, b in zip(a_indices, b_indices):
-                graph[a].append((b, i, float(Q[i, b])))
-                used[a, b] = True
         return graph
     
 

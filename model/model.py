@@ -94,7 +94,7 @@ def train_model(cfg, model, data):
         lambda_etev += rho * etev.sum().item()
         lambda_c += rho * (spv.sum().item() + etev.sum().item())
         
-        if (epoch + 1) % 1 == 0: 
+        if (epoch + 1) % 100 == 0: 
             print(f"Epoch: {epoch+1}")
             print(f"Total Loss: {total_loss.item()}")
             print(f"SPV: {spv.sum().item()}")

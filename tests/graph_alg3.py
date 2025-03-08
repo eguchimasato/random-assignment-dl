@@ -1,40 +1,65 @@
+import networkx as nx
 import torch
 import numpy as np
 import multiprocessing as mp
 
-
 class Graph:
     def __init__(self, Q, preferences):
-        self.Q = Q
+        """
+        Q: エージェントごとの n x n 二重確率行列 (numpy.array または torch.Tensor)
+        preferences: エージェントごとの n x n 選好行列 (numpy.array または torch.Tensor)
+        """
+        self.Q = Q  # compute_ev で numpy.array に変換済み
         self.preferences = preferences
-        self.num_agents, self.num_objects = Q.shape
-        
-        
+        self.num_agents, self.num_objects = self.Q.shape
+
     def build_graph(self):
         """
-        Q: 現在の n x n 二重確率行列 (torch.Tensor)
-        オブジェクトを頂点とするグラフを構築する。
-        エッジ (a -> b) は、あるエージェント i が a を b より好む（preferences[i, a] > preferences[i, b]）
-        かつ Q[i, b] > 0 である場合に追加する。
-        エッジには (b, i, Q[i, b]) の情報を記録する。
+        オブジェクトを頂点とするグラフを構築する処理を、全エージェント分の 3 次元配列を作成せずに
+        各エージェントごとに 2 次元の条件行列を作成することで高速化する。
+        エッジ (a -> b) は、エージェント i について
+          - preferences[i, a] > preferences[i, b]
+          - Q[i, b] > 0
+        の条件を満たす場合に追加し、最初に条件を満たしたエージェント i を witness とする。
         """
-        threshold = 1e-5
-        graph = {a: [] for a in range(self.num_objects)}
-        for a in range(self.num_objects):
-            for b in range(self.num_objects):
-                if a == b:
-                    continue
-                
-                for i in range(self.num_agents):
-                    if (self.preferences[i, a] > self.preferences[i, b]) and (self.Q[i, b] > threshold):
-                        graph[a].append((b, i, self.Q[i, b]))
-                        break # 同じ (a, b) ペアについて、最初に条件を満たしたエージェントを witness とする
+        P = self.preferences  # shape: (num_agents, num_objects)
+        Q = self.Q            # shape: (num_agents, num_objects)
+        num_agents, num_objects = P.shape
+
+        # 結果のグラフ: 各頂点 a に対して、(b, witness_agent, Q 値) のリスト
+        graph = {a: [] for a in range(num_objects)}
+        # 各 (a, b) ペアについて、すでにエッジが追加されたかを記録（最初の witness だけを採用）
+        used = np.zeros((num_objects, num_objects), dtype=bool)
         
+        # エージェント i ごとに条件行列を計算し、条件を満たす (a, b) ペアを抽出
+        for i in range(num_agents):
+            # 各エージェントについて、a, b の比較結果を 2 次元配列として計算
+            # ※ Q[i, b] > 0 は、各行に対して b 軸でブロードキャストされる
+            cond_i = (P[i][:, None] > P[i][None, :]) & (Q[i][None, :] > 0)
+            # すでに他のエージェントでエッジが追加されていない (a, b) ペアのみ対象
+            valid = cond_i & (~used)
+            # 有効な (a, b) ペアのインデックスを一括取得
+            a_indices, b_indices = np.where(valid)
+            # a == b（自己ループ）は除外
+            mask = a_indices != b_indices
+            a_indices = a_indices[mask]
+            b_indices = b_indices[mask]
+            
+            # 取得した全 (a, b) ペアに対して、エージェント i を witness としてエッジを追加
+            for a, b in zip(a_indices, b_indices):
+                graph[a].append((b, i, float(Q[i, b])))
+                used[a, b] = True
         return graph
 
-    # witnessが同一サイクルで連続しない、または最初と最後のwitnessが同じにならないようにする
+    # 目標：witnessが同一サイクルで連続しない、または最初と最後のwitnessが同じにならないようにする
+    #　無理そうだったら同一サイクルで同じwitnessが2回以上出現しないようにする
     def find_cycle(self, graph):
-        threshold = 1e-5
+        """
+        DFS を用いてグラフ中のサイクル（閉路）を探索する。
+        サイクルが見つかった場合は、サイクルを構成するエッジのリストを返す。
+        各エッジは (from_object, to_object, witness_agent, available_probability) のタプル。
+        サイクルがなければ None を返す。
+        """
         visited = set()
         rec_stack = []  # 各要素は (vertex, edge_info)。最初の頂点は edge_info=None
 
@@ -42,11 +67,6 @@ class Graph:
             visited.add(v)
             rec_stack.append((v, None))
             for (nbr, agent, avail) in graph[v]:
-                # avail が threshold 未満ならスキップ
-                if avail < threshold:
-                    continue
-
-                # 既に rec_stack に nbr がある場合、サイクルを候補として抽出
                 for idx, (node, _) in enumerate(rec_stack):
                     if node == nbr:
                         cycle_edges = []
@@ -55,30 +75,18 @@ class Graph:
                             edge = rec_stack[j][1]
                             if edge is not None:
                                 cycle_edges.append(edge)
-                        # 現在の (v -> nbr) のエッジもサイクルに含める
+                        
                         cycle_edges.append((v, nbr, agent, avail))
-                        
-                        # witness エージェントのシーケンスを抽出
-                        witnesses = [edge[2] for edge in cycle_edges]
-                        # 連続して同じ witness が現れる場合は無効
-                        if any(witnesses[k] == witnesses[k+1] for k in range(len(witnesses)-1)):
-                            continue
-                        # 最初と最後の witness が同じであれば無効
-                        if witnesses[0] == witnesses[-1]:
-                            continue
-                        # サイクル内の全エッジが threshold を満たしているかチェック
-                        if any(edge[3] < threshold for edge in cycle_edges):
-                            continue
-                        
                         return cycle_edges
-
+                
                 if nbr not in visited:
                     rec_stack.append((v, (v, nbr, agent, avail)))
                     result = dfs(nbr)
                     if result is not None:
                         return result
+                    
                     rec_stack.pop()
-
+            
             rec_stack.pop()
             return None
 
@@ -90,16 +98,11 @@ class Graph:
 
         return None
 
-
-    
-    
     def execute_all_cycles(self):
         """
-        idx: バッチ内のインデックス
-        対応する n x n 行列に対してサイクル交換を実施し、違反量 (violation) を計算する。
+        サイクルがなくなるまで、グラフ構築 → サイクル検出 → サイクル交換を実施する。
+        各サイクルでは、サイクル内のエッジのうち最小の Q 値を epsilon として交換を行う。
         """
-        threshold = 1e-5  # 交換を行う閾値
-        # 抽出: バッチ内の idx 番目の n x n 行列
         cycles_exchanges = []
         violation = 0.0
         while True:
@@ -107,23 +110,20 @@ class Graph:
             cycle = self.find_cycle(graph)
             if cycle is None:
                 break
-            
+
             # サイクル内の各エッジの利用可能な確率の最小値を epsilon とする
             epsilons = [edge[3] for edge in cycle]
             epsilon = min(epsilons)
-            # サイクル内の最小availがthreshold未満なら、これ以上意味のある交換ができないので終了
-            if epsilon < threshold:
-                break
             violation += epsilon
-            # サイクル内の各エッジについて交換を実施
+
+            # サイクル内の各エッジについて、Q の交換を実施
             for (a, b, agent, avail) in cycle:
                 self.Q[agent, b] -= epsilon
                 self.Q[agent, a] += epsilon
-            
-            cycles_exchanges.append((cycle, epsilon))
-        
-        return violation
 
+            cycles_exchanges.append((cycle, epsilon))
+
+        return violation, cycles_exchanges
 
 class compute_ev:
     def __init__(self, P, preferences, num_processes=None):
@@ -142,38 +142,31 @@ class compute_ev:
             self.num_processes = mp.cpu_count()
         else:
             self.num_processes = num_processes
-        
-    
+
     @staticmethod
     def func(Q, preferences):
         g = Graph(Q, preferences)
         return g.execute_all_cycles()
-        
-    
+
     def divide_P_matrices(self, idx):
         Q = self.P[idx].cpu().detach().numpy()
         return Q
-    
-    
+
     def divide_preferences_matrices(self, idx):
         preferences = self.preferences[idx].cpu().detach().numpy()
         return preferences
 
-    
     def execute_all_cycles_batch(self):
         """
         バッチ内の各 n x n 行列に対して execute_all_cycles を計算し、違反量 (violation) をまとめる。
         結果はバッチサイズ x 1 のテンソルとなる。
         """
-        # P行列とpreferences行列を分割
         P_list = [self.divide_P_matrices(i) for i in range(self.batch_size)]
         preferences_list = [self.divide_preferences_matrices(i) for i in range(self.batch_size)]
 
         with mp.Pool(self.num_processes) as pool:
-            # 各プロセスに対してバッチ内の異なる idx を渡して並列実行
-            violations = pool.starmap(self.func, zip(P_list, preferences_list))
+            results = pool.starmap(self.func, zip(P_list, preferences_list))
+            violations, cycles = zip(*results)
 
-        # 結果を torch.Tensor に変換し、形状を (batch_size, 1) にする
         violations = torch.tensor(violations, dtype=torch.float32).unsqueeze(1)
-
-        return violations, self.num_processes
+        return violations, cycles
