@@ -55,7 +55,7 @@ def train_model(cfg, model, data):
     batch_size = cfg.batch_size
 
     model = model.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.AdamW(model.parameters(), lr=lr)
     # 学習率スケジューラの設定：100エポックごとにlrを0.9倍に減衰
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.9)
 
@@ -94,12 +94,13 @@ def train_model(cfg, model, data):
         # 学習率の更新
         scheduler.step()
 
-        # パラメータの更新
-        lambda_spv += rho * spv.sum().item()
-        lambda_etev += rho * etev.sum().item()
+        if (epoch + 1) % 10 == 0:
+            # パラメータの更新
+            lambda_spv += rho * spv.sum().item()
+            lambda_etev += rho * etev.sum().item()
 
-        if etev.sum().item() > 0.1: 
-            rho *= 1.03
+            if etev.sum().item() > 0.1: 
+                rho *= 1.01
 
         #lambda_c += rho * (spv.sum().item() + etev.sum().item())
         
