@@ -138,4 +138,4 @@ class compute_ev:
         # 結果を torch.Tensor に変換し、形状を (batch_size, 1) にする
         violations = torch.tensor(violations, dtype=torch.float32).unsqueeze(1)
 
-        return violations
+        return violations.sum()/self.batch_size

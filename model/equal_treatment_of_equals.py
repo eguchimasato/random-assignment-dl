@@ -50,4 +50,4 @@ class compute_etev:
             preferences_batch = self.preferences[b].view(n, n)
             results[b, 0] = self.violation_degree(cfg, P_batch, preferences_batch)
 
-        return results
+        return results.sum()

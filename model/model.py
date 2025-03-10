@@ -56,11 +56,13 @@ def train_model(cfg, model, data):
 
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    # 学習率スケジューラの設定：100エポックごとにlrを0.9倍に減衰
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.9)
 
     # 損失関数の重み付け
     lambda_spv = 1.0  # c_1 の重み初期値
     lambda_etev = 1.0  # c_2 の重み初期値
-    lambda_c = 1.0  # c の重み初期値
+    #lambda_c = 1.0  # c の重み初期値
 
     rho = 1  # 重み付けのパラメータ
     
@@ -81,7 +83,7 @@ def train_model(cfg, model, data):
         objective_loss = ev_computer.execute_all_cycles_batch().sum()  # 目的関数
 
         # 総合損失
-        total_loss = objective_loss + lambda_spv * spv + lambda_etev * etev + lambda_c * (spv + etev)
+        total_loss = objective_loss + lambda_spv * spv + lambda_etev * etev + rho * (spv + etev) ** 2
         
         # 逆伝播とパラメータ更新
         optimizer.zero_grad()
@@ -89,18 +91,25 @@ def train_model(cfg, model, data):
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
+        # 学習率の更新
+        scheduler.step()
+
         # パラメータの更新
         lambda_spv += rho * spv.sum().item()
         lambda_etev += rho * etev.sum().item()
-        lambda_c += rho * (spv.sum().item() + etev.sum().item())
+
+        if etev.sum().item() > 0.1: 
+            rho *= 1.03
+
+        #lambda_c += rho * (spv.sum().item() + etev.sum().item())
         
         if (epoch + 1) % 100 == 0: 
             print(f"Epoch: {epoch+1}")
             print(f"Total Loss: {total_loss.item()}")
-            print(f"SPV: {spv.sum().item()}")
-            print(f"ETEV: {etev.sum().item()}")
-            print(f"Objective Loss(ev): {objective_loss.sum().item()}")
-            print(f"Parameters: lambda_spv = {lambda_spv}, lambda_sv = {lambda_etev},lambda_c = {lambda_c}, rho = {rho}")
+            print(f"SPV: {spv.item()}")
+            print(f"ETEV: {etev.item()}")
+            print(f"Objective Loss(ev): {objective_loss.item()}")
+            print(f"Parameters: lambda_spv = {lambda_spv}, lambda_sv = {lambda_etev}, rho = {rho}, lr = {scheduler.get_last_lr()[0]}")
             print("---------------------------")
 
     print("Training completed.")
